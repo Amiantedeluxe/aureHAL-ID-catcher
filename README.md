@@ -1,10 +1,10 @@
 # auréHAL-ID-catcher
 
-### Id_catcher.js :
+### Id_Catcher.js :
 
 Le code indenté avec commentaires. S'utilise depuis une fiche auteur dans AuréHAL.
 
-### Bookmarklet_to_copy.js :
+### Id_Catcher_tocopy.js :
 
 Le même code en une seule ligne pour faciliter la copie dans le marque-page sur navigateur.
 
