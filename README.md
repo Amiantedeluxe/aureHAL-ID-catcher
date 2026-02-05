@@ -1,6 +1,6 @@
 # auréHAL-ID-catcher
 
-### Bookmarklet.js :
+### Id_catcher.js :
 
 Le code indenté avec commentaires. S'utilise depuis une fiche auteur dans AuréHAL.
 
