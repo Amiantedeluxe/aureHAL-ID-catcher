@@ -45,7 +45,7 @@ javascript:(async () => {
 
         let prenom = '', nom = '';
 
-        // 1. Récupération prénom/nom depuis l'API HAL (source principale)
+        // Récupération prénom/nom depuis l'API HAL
         try {
             let r = await fetch(`https://api.archives-ouvertes.fr/search/?q=authIdPerson_i:${idAur}&fl=authLastName_s,authFirstName_s,authIdPerson_i&rows=50&wt=json`);
             if (r.ok) {
@@ -62,7 +62,7 @@ javascript:(async () => {
             }
         } catch(e) {}
 
-        // 2. Fallback DOM si l'API HAL n'a rien retourné
+        // Fallback DOM si l'API HAL n'a rien retourné
         if (!prenom && !nom) {
             let header = document.querySelector('h3.mb-4') ||
                 Array.from(document.querySelectorAll('h3')).find(h =>
@@ -217,3 +217,4 @@ javascript:(async () => {
         createPopup('Erreur : ' + escapeHtml(e?.message || String(e)));
     }
 })();
+
