@@ -127,7 +127,7 @@ javascript:(async () => {
 
             for (let i = 0; i < items.length; i++) {
                 const { ppn, lib } = items[i];
-                let bioHtml = '', orcidHtml = '', halHtml='';
+                let bioHtml = '', orcidHtml = '', halHtml = '';
                 const dr = details[i];
 
                 if (dr.status === 'fulfilled' && Array.isArray(dr.value?.record?.datafield)) {
@@ -226,6 +226,7 @@ if (halField) {
         createPopup('Erreur : ' + escapeHtml(e?.message || String(e)));
     }
 })();
+
 
 
 
