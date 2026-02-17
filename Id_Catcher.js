@@ -158,7 +158,7 @@ javascript:(async () => {
                         .find(f => subs(f).find(s => String(s.code) === '2' && String(s.content).toUpperCase() === 'HAL'));
                     if (halField) {
                         let idHal = String(sub(halField, 'a') || '');
-                        if (idHal) halHtml = `<div style="margin-top:3px;"><b>idHal :</b> ${escapeHtml(idHal)} <button data-copy="${escapeAttr(idHal)}" style="border:none;background:#1565C0;color:white;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:12px;margin-left:4px;">📋</button></div>`;
+                        if (idHal) halHtml = `<div style="margin-top:3px;"><b>IDHAL :</b> ${escapeHtml(idHal)} <button data-copy="${escapeAttr(idHal)}" style="border:none;background:#1565C0;color:white;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:12px;margin-left:4px;">📋</button></div>`;
                     }
 
                     // Affiliations (tag 510)
@@ -225,6 +225,7 @@ javascript:(async () => {
         createPopup('Erreur : ' + escapeHtml(e?.message || String(e)));
     }
 })();
+
 
 
 
