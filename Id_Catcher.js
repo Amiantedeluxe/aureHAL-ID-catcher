@@ -151,6 +151,15 @@ javascript:(async () => {
                     if (orcidField) {
                         let orcid = String(sub(orcidField, 'a') || '');
                         if (orcid) orcidHtml = `<div style="margin-top:3px;"><b>ORCID :</b> <a href="https://orcid.org/${escapeAttr(orcid)}" target="_blank" rel="noopener">${escapeHtml(orcid)}</a> <button data-copy="${escapeAttr(orcid)}" style="border:none;background:#81C784;color:white;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:12px;margin-left:4px;">📋</button></div>`;
+                        
+                        // idHal (tag 035, code 2 = "HAL")
+let halField = fields.filter(f => String(f.tag) === '035')
+    .find(f => subs(f).find(s => String(s.code) === '2' && String(s.content).toUpperCase() === 'HAL'));
+let halHtml = '';
+if (halField) {
+    let idHal = String(sub(halField, 'a') || '');
+    if (idHal) halHtml = `<div style="margin-top:3px;"><b>idHal :</b> ${escapeHtml(idHal)} <button data-copy="${escapeAttr(idHal)}" style="border:none;background:#1565C0;color:white;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:12px;margin-left:4px;">📋</button></div>`;
+}
                     }
 
                     // Affiliations (tag 510)
@@ -175,7 +184,7 @@ javascript:(async () => {
                 html += `<li style="margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #eee;">
                            <a href="https://www.idref.fr/${escapeAttr(ppn)}" target="_blank" rel="noopener"><b>${escapeHtml(lib)}</b></a>
                            ${bioHtml}
-                           <div style="margin-top:4px;"><b>IDREF :</b> ${escapeHtml(ppn)} <button data-copy="${escapeAttr(ppn)}" style="border:none;background:#64B5F6;color:white;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:12px;margin-left:4px;">📋</button>${orcidHtml}</div>
+                           <div style="margin-top:4px;"><b>IDREF :</b> ${escapeHtml(ppn)} <button data-copy="${escapeAttr(ppn)}" style="border:none;background:#64B5F6;color:white;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:12px;margin-left:4px;">📋</button>${orcidHtml}${halHtml}</div>
                          </li>`;
             }
         } else {
@@ -217,4 +226,5 @@ javascript:(async () => {
         createPopup('Erreur : ' + escapeHtml(e?.message || String(e)));
     }
 })();
+
 
