@@ -18,7 +18,7 @@ javascript:(async () => {
         if (prev) prev.remove();
         let d = document.createElement('div');
         d.id = 'hal-idcatcher-popup';
-        d.style.cssText = 'position:fixed;top:20px;right:20px;background:white;border:2px solid #444;padding:10px;z-index:99999;max-height:70%;overflow-y:auto;width:520px;font-family:sans-serif;border-radius:15px;';
+        d.style.cssText = 'position:fixed;top:20px;right:20px;background:white;border:2px solid #444;padding:10px;z-index:99999;max-height:70%;overflow-y:auto;width:520px;font-family:sans-serif;';
         d.innerHTML = html;
         let b = document.createElement('button');
         b.textContent = 'Fermer';
@@ -225,6 +225,7 @@ javascript:(async () => {
         createPopup('Erreur : ' + escapeHtml(e?.message || String(e)));
     }
 })();
+
 
 
 
