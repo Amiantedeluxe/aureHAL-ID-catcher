@@ -193,30 +193,52 @@ javascript:(async () => {
 
         // === ORCID ===
         html += `<div style="margin-top:15px;"><h3 style="background:#E8F5E9;padding:6px;margin:0;">🔬 ORCID</h3><ul style="padding-left:14px;margin-top:8px;">`;
+let orcidIds = (orcidData?.result || []).map(item => item['orcid-identifier']?.path).filter(p => p);
+if (orcidIds.length) {
+    let [profiles, employments] = await Promise.all([
+        Promise.allSettled(orcidIds.map(oid =>
+            fetch(`https://pub.orcid.org/v3.0/${oid}/person`, { headers: { 'Accept': 'application/json' } })
+                .then(r => r.ok ? r.json() : null)
+        )),
+        Promise.allSettled(orcidIds.map(oid =>
+            fetch(`https://pub.orcid.org/v3.0/${oid}/employments`, { headers: { 'Accept': 'application/json' } })
+                .then(r => r.ok ? r.json() : null)
+        ))
+    ]);
 
-        let orcidIds = (orcidData?.result || []).map(item => item['orcid-identifier']?.path).filter(p => p);
-        if (orcidIds.length) {
-            let profiles = await Promise.allSettled(orcidIds.map(oid =>
-                fetch(`https://pub.orcid.org/v3.0/${oid}/person`, { headers: { 'Accept': 'application/json' } })
-                    .then(r => r.ok ? r.json() : null)
-            ));
-            for (let i = 0; i < orcidIds.length; i++) {
-                let oid = orcidIds[i];
-                let profile = profiles[i].status === 'fulfilled' ? profiles[i].value : null;
-                let displayName = oid;
-                if (profile?.name) {
-                    let gn = profile.name['given-names']?.value || '';
-                    let fn = profile.name['family-name']?.value || '';
-                    displayName = `${gn} ${fn}`.trim() || oid;
-                }
-                html += `<li style="margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #eee;">
-                           <a href="https://orcid.org/${escapeAttr(oid)}" target="_blank" rel="noopener"><b>${escapeHtml(displayName)}</b></a>
-                           <div style="margin-top:3px;color:#666;font-size:13px;">${escapeHtml(oid)} <button data-copy="${escapeAttr(oid)}" style="border:none;background:#81C784;color:white;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:12px;margin-left:4px;">📋</button></div>
-                         </li>`;
-            }
-        } else {
-            html += `<li>Aucun résultat</li>`;
+    for (let i = 0; i < orcidIds.length; i++) {
+        let oid = orcidIds[i];
+        let profile = profiles[i].status === 'fulfilled' ? profiles[i].value : null;
+        let empData = employments[i].status === 'fulfilled' ? employments[i].value : null;
+
+        let displayName = oid;
+        if (profile?.name) {
+            let gn = profile.name['given-names']?.value || '';
+            let fn = profile.name['family-name']?.value || '';
+            displayName = `${gn} ${fn}`.trim() || oid;
         }
+
+        // Extraire les emplois
+       let currentEmp = (empData?.['affiliation-group'] || [])
+    .flatMap(g => g.summaries?.map(s => s['employment-summary']) || [])
+    .filter(e => e && !e['end-date'])  // pas de date de fin = actuel
+    .map(e => e.organization?.name)
+    .filter(name => name);
+
+        let empHtml = '';
+if (currentEmp.length) {
+    empHtml = `<div style="font-size:12px;color:#555;font-style:italic;margin-top:3px;">${currentEmp.map(n => escapeHtml(n)).join(', ')}</div>`;
+}
+
+        html += `<li style="margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #eee;">
+                   <a href="https://orcid.org/${escapeAttr(oid)}" target="_blank" rel="noopener"><b>${escapeHtml(displayName)}</b></a>
+                   <div style="margin-top:3px;color:#666;font-size:13px;">${escapeHtml(oid)} <button data-copy="${escapeAttr(oid)}" style="border:none;background:#81C784;color:white;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:12px;margin-left:4px;">📋</button></div>
+                   ${empHtml}
+                 </li>`;
+    }
+} else {
+    html += `<li>Aucun résultat</li>`;
+}
 
         html += `</ul></div></div>`;
         createPopup(html);
