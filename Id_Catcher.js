@@ -44,8 +44,12 @@ javascript:(async () => {
         if (!idAur) { createPopup('<b>Impossible de déterminer l\'ID auteur depuis l\'URL.</b>'); return; }
 
         let prenom = '', nom = '';
+        
+        const isCreatePage = /\/create\//i.test(window.location.pathname);
 
+     
         // Récupération prénom/nom depuis l'API HAL
+        if (!isCreatePage) {
         try {
             let r = await fetch(`https://api.archives-ouvertes.fr/search/?q=authIdPerson_i:${idAur}&fl=authLastName_s,authFirstName_s,authIdPerson_i&rows=50&wt=json`);
             if (r.ok) {
@@ -61,7 +65,7 @@ javascript:(async () => {
                 }
             }
         } catch(e) {}
-
+        }
         // Fallback DOM si l'API HAL n'a rien retourné
         if (!prenom && !nom) {
             let header = document.querySelector('h3.mb-4') ||
