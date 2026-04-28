@@ -50,21 +50,21 @@ javascript:(async () => {
      
         // Récupération prénom/nom depuis l'API HAL
         if (!isCreatePage) {
-        try {
-            let r = await fetch(`https://api.archives-ouvertes.fr/search/?q=authIdPerson_i:${idAur}&fl=authLastName_s,authFirstName_s,authIdPerson_i&rows=50&wt=json`);
-            if (r.ok) {
-                let data = await r.json();
-                for (const doc of (data.response?.docs || [])) {
-                    let ids = Array.isArray(doc.authIdPerson_i) ? doc.authIdPerson_i : [doc.authIdPerson_i];
-                    let idx = ids.findIndex(id => String(id) === String(idAur));
-                    if (idx !== -1) {
-                        prenom = (doc.authFirstName_s || [])[idx] || '';
-                        nom    = (doc.authLastName_s  || [])[idx] || '';
-                        break;
+            try {
+                let r = await fetch(`https://api.archives-ouvertes.fr/search/?q=authIdPerson_i:${idAur}&fl=authLastName_s,authFirstName_s,authIdPerson_i&rows=50&wt=json`);
+                if (r.ok) {
+                    let data = await r.json();
+                    for (const doc of (data.response?.docs || [])) {
+                        let ids = Array.isArray(doc.authIdPerson_i) ? doc.authIdPerson_i : [doc.authIdPerson_i];
+                        let idx = ids.findIndex(id => String(id) === String(idAur));
+                        if (idx !== -1) {
+                            prenom = (doc.authFirstName_s || [])[idx] || '';
+                            nom    = (doc.authLastName_s  || [])[idx] || '';
+                            break;
+                        }
                     }
                 }
-            }
-        } catch(e) {}
+            } catch(e) {}
         }
         // Fallback DOM si l'API HAL n'a rien retourné
         if (!prenom && !nom) {
