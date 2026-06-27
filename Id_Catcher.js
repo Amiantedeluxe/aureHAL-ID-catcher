@@ -11,6 +11,25 @@ javascript:(async () => {
     function stripAccents(s) {
         return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     }
+    // Normalisation pour comparaison de noms (accents, casse, ponctuation)
+    function normName(s) {
+        return stripAccents(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+    // Jetons triés d'un nom → permet une comparaison indépendante de l'ordre prénom/nom
+    function nameKey(s) {
+        return normName(s).split(/\s+/).filter(Boolean).sort().join(' ');
+    }
+
+    // Petite pastille « identifiant » colorée avec bouton copier (modèle Druid)
+    function idPill(label, value, link, bg) {
+        const inner = link
+            ? `<a href="${escapeAttr(link)}" target="_blank" rel="noopener" style="color:#fff;text-decoration:none;">${escapeHtml(value)}</a>`
+            : escapeHtml(value);
+        return `<span style="display:inline-flex;align-items:center;gap:5px;background:${bg};color:#fff;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;margin:3px 4px 0 0;">`
+            + `${escapeHtml(label)} ${inner}`
+            + `<button data-copy="${escapeAttr(value)}" title="Copier" style="border:none;background:rgba(255,255,255,.25);color:#fff;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;">⧉</button>`
+            + `</span>`;
+    }
 
     // Popup unique avec délégation pour les boutons de copie
     function createPopup(html) {
@@ -18,7 +37,7 @@ javascript:(async () => {
         if (prev) prev.remove();
         let d = document.createElement('div');
         d.id = 'hal-idcatcher-popup';
-        d.style.cssText = 'position:fixed;top:20px;right:20px;background:white;border:2px solid #444;padding:10px;z-index:99999;max-height:70%;overflow-y:auto;width:520px;font-family:sans-serif;';
+        d.style.cssText = 'position:fixed;top:20px;right:20px;background:white;border:2px solid #444;padding:10px;z-index:99999;max-height:80%;overflow-y:auto;width:560px;font-family:sans-serif;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.25);';
         d.innerHTML = html;
         let b = document.createElement('button');
         b.textContent = 'Fermer';
@@ -44,10 +63,9 @@ javascript:(async () => {
         if (!idAur) { createPopup('<b>Impossible de déterminer l\'ID auteur depuis l\'URL.</b>'); return; }
 
         let prenom = '', nom = '';
-        
+
         const isCreatePage = /\/create\//i.test(window.location.pathname);
 
-     
         // Récupération prénom/nom depuis l'API HAL
         if (!isCreatePage) {
             try {
@@ -95,6 +113,7 @@ javascript:(async () => {
         if (!prenom && !nom) { createPopup("<b>Impossible de déterminer le nom de l'auteur.</b>"); return; }
 
         let nomTrouve = `${prenom} ${nom}`.trim();
+        let nomTrouveKey = nameKey(nomTrouve);   // pour le surlignage « nom exact »
 
         // Construction des requêtes IdRef et ORCID
         let qUrl = `https://www.idref.fr/Sru/Solr?q=${encodeURIComponent(`persname_t:(${nom} AND ${prenom})`)}&fl=id,ppn_z,affcourt_z,recordtype_z&rows=20&wt=json`;
@@ -115,79 +134,121 @@ javascript:(async () => {
             try { orcidData = await r3.value.json(); } catch(e) {}
         }
 
+        // ORCID retournés par la recherche par nom → sert au lien croisé IdRef ↔ ORCID
+        let orcidSearchSet = new Set(
+            (orcidData?.result || []).map(it => it['orcid-identifier']?.path).filter(Boolean).map(p => p.toUpperCase())
+        );
+
         let html = `<div style="padding:6px;"><b>Résultats pour ${escapeHtml(nomTrouve)} :</b>`;
 
         // === IdRef ===
-        html += `<div style="margin-top:10px;"><h3 style="background:#E3F2FD;padding:6px;margin:0;">📚 IdRef</h3><ul style="padding-left:14px;margin-top:8px;">`;
+        html += `<div style="margin-top:10px;"><h3 style="background:#E3F2FD;padding:6px;margin:0;border-radius:4px;">📚 IdRef</h3><ul style="list-style:none;padding-left:0;margin-top:8px;">`;
 
         let docs = idrefJson?.response?.docs || [];
         let items = docs.map(x => ({ ppn: x.ppn_z || x.id || '', lib: x.affcourt_z || x.recordtype_z || '' })).filter(it => it.ppn);
 
         if (items.length) {
-            // Fetch des détails de chaque PPN en parallèle
+            // Fetch des détails de chaque PPN en parallèle (notice UniMARC JSON)
             let details = await Promise.allSettled(items.map(it =>
                 fetch(`https://www.idref.fr/${it.ppn}.json`).then(r => r.ok ? r.json() : Promise.reject())
             ));
 
-            for (let i = 0; i < items.length; i++) {
-                const { ppn, lib } = items[i];
-                let bioHtml = '', orcidHtml = '', halHtml = '';
+            // Construit un candidat enrichi par PPN (mêmes tags UniMARC que Druid)
+            let cands = items.map((it, i) => {
+                const c = { ppn: it.ppn, lib: it.lib, name: '', job: '', birth: '', death: '', gender: '', bio: '', orcid: '', idhal: '', affs: [] };
                 const dr = details[i];
-
                 if (dr.status === 'fulfilled' && Array.isArray(dr.value?.record?.datafield)) {
                     const fields = dr.value.record.datafield;
-                    const subs = f => Array.isArray(f.subfield) ? f.subfield : [f.subfield];
+                    const subs = f => Array.isArray(f.subfield) ? f.subfield : (f.subfield ? [f.subfield] : []);
                     const sub = (f, code) => subs(f).find(s => String(s.code) === code)?.content;
 
-                    // Biographie (tag 340)
-                    let bioField = fields.find(f => String(f.tag) === '340');
-                    if (bioField) {
-                        let bio = String(sub(bioField, 'a') || '');
-                        if (bio) {
-                            let bioShort = bio.length > 100 ? bio.substring(0, 100) + '...' : bio;
-                            bioHtml = `<div style="margin-top:3px;font-size:12px;color:#555;font-style:italic;cursor:help;" title="${escapeAttr(bio)}">${escapeHtml(bioShort)}</div>`;
-                        }
+                    // 200 : $a nom, $b prénom, $c métier  (repli 300$a pour le métier)
+                    const f200 = fields.find(f => String(f.tag) === '200');
+                    if (f200) {
+                        const last = String(sub(f200, 'a') || ''), first = String(sub(f200, 'b') || '');
+                        c.name = `${first} ${last}`.trim();
+                        c.job = String(sub(f200, 'c') || '');
                     }
-
-                    // ORCID (tag 035, code 2 = "ORCID")
-                    let orcidField = fields.filter(f => String(f.tag) === '035')
-                        .find(f => subs(f).find(s => String(s.code) === '2' && String(s.content).toUpperCase() === 'ORCID'));
-                    if (orcidField) {
-                        let orcid = String(sub(orcidField, 'a') || '');
-                        if (orcid) orcidHtml = `<div style="margin-top:3px;"><b>ORCID :</b> <a href="https://orcid.org/${escapeAttr(orcid)}" target="_blank" rel="noopener">${escapeHtml(orcid)}</a> <button data-copy="${escapeAttr(orcid)}" style="border:none;background:#81C784;color:white;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:12px;margin-left:4px;">📋</button></div>`;
-                       }
-
-                    // ID HAL
-                    let halField = fields.filter(f => String(f.tag) === '035')
-                        .find(f => subs(f).find(s => String(s.code) === '2' && String(s.content).toUpperCase() === 'HAL'));
-                    if (halField) {
-                        let idHal = String(sub(halField, 'a') || '');
-                        if (idHal) halHtml = `<div style="margin-top:3px;"><b>IDHAL :</b> ${escapeHtml(idHal)} <button data-copy="${escapeAttr(idHal)}" style="border:none;background:#1565C0;color:white;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:12px;margin-left:4px;">📋</button></div>`;
+                    if (!c.job) {
+                        const f300 = fields.find(f => String(f.tag) === '300');
+                        if (f300) c.job = String(sub(f300, 'a') || '');
                     }
-
-                    // Affiliations (tag 510)
-                    let affFields = fields.filter(f => String(f.tag) === '510');
-                    if (affFields.length) {
-                        let affList = affFields.map(f => ({
-                            name: String(sub(f, 'a') || ''),
-                            year: (String(sub(f, '0') || '').match(/^(\d{4})/) || [])[1] || ''
-                        })).filter(a => a.name);
-                        if (affList.length) {
-                            bioHtml += `<div style="margin-top:5px;font-size:12px;color:#444;"><b>Affiliation(s) :</b><br/>`;
-                            for (const aff of affList) {
-                                bioHtml += `<span style="margin-left:8px;">• ${escapeHtml(aff.name)}`;
-                                if (aff.year) bioHtml += ` <i>(depuis ${aff.year})</i>`;
-                                bioHtml += `</span><br/>`;
-                            }
-                            bioHtml += `</div>`;
-                        }
+                    // 103 : $a naissance, $b décès → on garde l'année
+                    const f103 = fields.find(f => String(f.tag) === '103');
+                    if (f103) {
+                        c.birth = (String(sub(f103, 'a') || '').match(/\d{4}/) || [''])[0];
+                        c.death = (String(sub(f103, 'b') || '').match(/\d{4}/) || [''])[0];
                     }
+                    // 120 : $a genre (aa = F, ba = M)
+                    const f120 = fields.find(f => String(f.tag) === '120');
+                    if (f120) {
+                        const g = String(sub(f120, 'a') || '').slice(0, 2);
+                        c.gender = g === 'aa' ? 'F' : g === 'ba' ? 'M' : '';
+                    }
+                    // 340 : biographie / note
+                    const f340 = fields.find(f => String(f.tag) === '340');
+                    if (f340) c.bio = String(sub(f340, 'a') || '');
+                    // 035 : ORCID / IdHAL (code 2 = source de l'identifiant)
+                    for (const f of fields.filter(f => String(f.tag) === '035')) {
+                        const srcLabel = String(sub(f, '2') || '').toUpperCase();
+                        const val = String(sub(f, 'a') || '');
+                        if (!val) continue;
+                        if (srcLabel === 'ORCID' && !c.orcid) c.orcid = val;
+                        if (srcLabel === 'HAL' && !c.idhal) c.idhal = val;
+                    }
+                    // 510 : affiliations ($a nom, $0 année)
+                    c.affs = fields.filter(f => String(f.tag) === '510').map(f => ({
+                        name: String(sub(f, 'a') || ''),
+                        year: (String(sub(f, '0') || '').match(/^(\d{4})/) || [])[1] || ''
+                    })).filter(a => a.name);
+                }
+                // Surlignage « nom exact » : le nom de la notice (ou affcourt) correspond à l'auteur recherché
+                c.exact = !!nomTrouveKey && (nameKey(c.name || c.lib) === nomTrouveKey);
+                return c;
+            });
+
+            // Les correspondances de nom exact remontent en tête (équivalent du « strong » de Druid)
+            cands.sort((a, b) => (b.exact ? 1 : 0) - (a.exact ? 1 : 0));
+
+            for (const c of cands) {
+                // Ligne de métadonnées : métier · (dates) · genre
+                const meta = [];
+                if (c.job) meta.push(escapeHtml(c.job));
+                if (c.birth || c.death) meta.push(`(${escapeHtml(c.birth || '?')}${c.death ? '–' + escapeHtml(c.death) : '– '})`);
+                if (c.gender) meta.push(c.gender === 'F' ? '♀' : '♂');
+                const metaHtml = meta.length ? `<div style="margin-top:2px;font-size:12px;color:#555;">${meta.join(' · ')}</div>` : '';
+
+                // Biographie tronquée (2 lignes) avec tooltip = bio complète
+                const bioHtml = c.bio
+                    ? `<div style="margin-top:4px;font-size:12px;color:#666;font-style:italic;cursor:help;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;" title="${escapeAttr(c.bio)}">${escapeHtml(c.bio)}</div>`
+                    : '';
+
+                // Affiliations
+                let affHtml = '';
+                if (c.affs.length) {
+                    affHtml = `<div style="margin-top:4px;font-size:12px;color:#444;">🏛 ${c.affs.map(a => escapeHtml(a.name) + (a.year ? ` <i style="color:#888;">(depuis ${a.year})</i>` : '')).join(' · ')}</div>`;
                 }
 
-                html += `<li style="margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #eee;">
-                           <a href="https://www.idref.fr/${escapeAttr(ppn)}" target="_blank" rel="noopener"><b>${escapeHtml(lib)}</b></a>
+                // Pastilles identifiants
+                let pills = idPill('📚 IDREF', c.ppn, `https://www.idref.fr/${c.ppn}`, '#1976D2');
+                if (c.orcid) pills += idPill('🔬 ORCID', c.orcid, `https://orcid.org/${c.orcid}`, '#43A047');
+                if (c.idhal) pills += idPill('HAL', c.idhal, null, '#1565C0');
+
+                const exactTag = c.exact
+                    ? `<span style="float:right;background:#C8E6C9;color:#1B5E20;font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px;">✓ nom exact</span>`
+                    : '';
+                const crossTag = (c.orcid && orcidSearchSet.has(c.orcid.toUpperCase()))
+                    ? `<div style="margin-top:3px;font-size:11px;color:#2E7D32;">↔ aussi listé dans la section ORCID</div>`
+                    : '';
+
+                html += `<li style="margin-bottom:10px;padding:8px;border:1px solid #e3e3e3;border-left:4px solid ${c.exact ? '#43A047' : '#90CAF9'};border-radius:5px;">
+                           ${exactTag}
+                           <a href="https://www.idref.fr/${escapeAttr(c.ppn)}" target="_blank" rel="noopener" style="font-weight:700;color:#0d47a1;text-decoration:none;">${escapeHtml(c.name || c.lib)}</a>
+                           ${metaHtml}
                            ${bioHtml}
-                           <div style="margin-top:4px;"><b>IDREF :</b> ${escapeHtml(ppn)} <button data-copy="${escapeAttr(ppn)}" style="border:none;background:#64B5F6;color:white;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:12px;margin-left:4px;">📋</button>${orcidHtml}${halHtml}</div>
+                           ${affHtml}
+                           <div style="margin-top:6px;">${pills}</div>
+                           ${crossTag}
                          </li>`;
             }
         } else {
@@ -196,53 +257,56 @@ javascript:(async () => {
         html += `</ul></div>`;
 
         // === ORCID ===
-        html += `<div style="margin-top:15px;"><h3 style="background:#E8F5E9;padding:6px;margin:0;">🔬 ORCID</h3><ul style="padding-left:14px;margin-top:8px;">`;
-let orcidIds = (orcidData?.result || []).map(item => item['orcid-identifier']?.path).filter(p => p);
-if (orcidIds.length) {
-    let [profiles, employments] = await Promise.all([
-        Promise.allSettled(orcidIds.map(oid =>
-            fetch(`https://pub.orcid.org/v3.0/${oid}/person`, { headers: { 'Accept': 'application/json' } })
-                .then(r => r.ok ? r.json() : null)
-        )),
-        Promise.allSettled(orcidIds.map(oid =>
-            fetch(`https://pub.orcid.org/v3.0/${oid}/employments`, { headers: { 'Accept': 'application/json' } })
-                .then(r => r.ok ? r.json() : null)
-        ))
-    ]);
+        html += `<div style="margin-top:15px;"><h3 style="background:#E8F5E9;padding:6px;margin:0;border-radius:4px;">🔬 ORCID</h3><ul style="list-style:none;padding-left:0;margin-top:8px;">`;
+        let orcidIds = (orcidData?.result || []).map(item => item['orcid-identifier']?.path).filter(p => p);
+        if (orcidIds.length) {
+            let [profiles, employments] = await Promise.all([
+                Promise.allSettled(orcidIds.map(oid =>
+                    fetch(`https://pub.orcid.org/v3.0/${oid}/person`, { headers: { 'Accept': 'application/json' } })
+                        .then(r => r.ok ? r.json() : null)
+                )),
+                Promise.allSettled(orcidIds.map(oid =>
+                    fetch(`https://pub.orcid.org/v3.0/${oid}/employments`, { headers: { 'Accept': 'application/json' } })
+                        .then(r => r.ok ? r.json() : null)
+                ))
+            ]);
 
-    for (let i = 0; i < orcidIds.length; i++) {
-        let oid = orcidIds[i];
-        let profile = profiles[i].status === 'fulfilled' ? profiles[i].value : null;
-        let empData = employments[i].status === 'fulfilled' ? employments[i].value : null;
+            for (let i = 0; i < orcidIds.length; i++) {
+                let oid = orcidIds[i];
+                let profile = profiles[i].status === 'fulfilled' ? profiles[i].value : null;
+                let empData = employments[i].status === 'fulfilled' ? employments[i].value : null;
 
-        let displayName = oid;
-        if (profile?.name) {
-            let gn = profile.name['given-names']?.value || '';
-            let fn = profile.name['family-name']?.value || '';
-            displayName = `${gn} ${fn}`.trim() || oid;
+                let displayName = oid;
+                if (profile?.name) {
+                    let gn = profile.name['given-names']?.value || '';
+                    let fn = profile.name['family-name']?.value || '';
+                    displayName = `${gn} ${fn}`.trim() || oid;
+                }
+
+                // Emplois en cours (pas de date de fin)
+                let currentEmp = (empData?.['affiliation-group'] || [])
+                    .flatMap(g => g.summaries?.map(s => s['employment-summary']) || [])
+                    .filter(e => e && !e['end-date'])
+                    .map(e => e.organization?.name)
+                    .filter(name => name);
+                let empHtml = currentEmp.length
+                    ? `<div style="font-size:12px;color:#555;font-style:italic;margin-top:3px;">🏛 ${currentEmp.map(n => escapeHtml(n)).join(', ')}</div>`
+                    : '';
+
+                const exactTag = (nomTrouveKey && nameKey(displayName) === nomTrouveKey)
+                    ? `<span style="float:right;background:#C8E6C9;color:#1B5E20;font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px;">✓ nom exact</span>`
+                    : '';
+
+                html += `<li style="margin-bottom:10px;padding:8px;border:1px solid #e3e3e3;border-left:4px solid #A5D6A7;border-radius:5px;">
+                           ${exactTag}
+                           <a href="https://orcid.org/${escapeAttr(oid)}" target="_blank" rel="noopener" style="font-weight:700;color:#1b5e20;text-decoration:none;">${escapeHtml(displayName)}</a>
+                           ${empHtml}
+                           <div style="margin-top:6px;">${idPill('🔬 ORCID', oid, `https://orcid.org/${oid}`, '#43A047')}</div>
+                         </li>`;
+            }
+        } else {
+            html += `<li>Aucun résultat</li>`;
         }
-
-        // Extraire les emplois
-       let currentEmp = (empData?.['affiliation-group'] || [])
-    .flatMap(g => g.summaries?.map(s => s['employment-summary']) || [])
-    .filter(e => e && !e['end-date'])  // pas de date de fin = actuel
-    .map(e => e.organization?.name)
-    .filter(name => name);
-
-        let empHtml = '';
-if (currentEmp.length) {
-    empHtml = `<div style="font-size:12px;color:#555;font-style:italic;margin-top:3px;">${currentEmp.map(n => escapeHtml(n)).join(', ')}</div>`;
-}
-
-        html += `<li style="margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #eee;">
-                   <a href="https://orcid.org/${escapeAttr(oid)}" target="_blank" rel="noopener"><b>${escapeHtml(displayName)}</b></a>
-                   <div style="margin-top:3px;color:#666;font-size:13px;">${escapeHtml(oid)} <button data-copy="${escapeAttr(oid)}" style="border:none;background:#81C784;color:white;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:12px;margin-left:4px;">📋</button></div>
-                   ${empHtml}
-                 </li>`;
-    }
-} else {
-    html += `<li>Aucun résultat</li>`;
-}
 
         html += `</ul></div></div>`;
         createPopup(html);
@@ -251,11 +315,3 @@ if (currentEmp.length) {
         createPopup('Erreur : ' + escapeHtml(e?.message || String(e)));
     }
 })();
-
-
-
-
-
-
-
-

@@ -19,7 +19,8 @@ Le même code en une seule ligne pour faciliter la copie dans le marque-page sur
 
 	1. Le script récupère le nom de l'auteur depuis la page auréhal
 	2. Fait une requête API IdRef et ORCID a partir du nom
-	3. Affiche les Ids des candidats dans une popup avec leur nom, description idRef, lien vers les pages IdRef et ORCID, et bouton pour rapidement copier l'ID.
+	3. Affiche les candidats dans une popup sous forme de cartes : nom, métier, dates de vie et genre (lus dans la notice IdRef), biographie, affiliation(s), et les identifiants (IdRef / ORCID / IdHAL) en pastilles colorées avec lien et bouton de copie.
+	4. Aides au tri : les candidats dont le nom correspond exactement à l'auteur recherché sont remontés en tête et marqués « ✓ nom exact » ; un candidat IdRef dont l'ORCID figure aussi dans la section ORCID est signalé pour éviter les doublons.
 
 <img width="1522" height="848" alt="Capture d&#39;écran 2026-02-05 183627" src="https://github.com/user-attachments/assets/803afe4e-c998-4603-b5ea-26717f043a51" />
 
